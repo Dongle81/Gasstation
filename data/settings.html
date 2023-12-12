@@ -529,27 +529,22 @@
             request.send();
         }
         
-        function getRawValue(){
+        function getValue(){
             var request = new XMLHttpRequest();
             request.onreadystatechange = function(){
                 if(this.readyState == 4 && this.status == 200){
                     if(this.responseText != null){
                         var responseString = this.responseText;
                         var value = responseString.split("&");
-                        document.getElementById("lc1").innerHTML = value[0];
-                        document.getElementById("lc2").innerHTML = value[1];
-                        if(CG_trans_visible == true){
-                            document.getElementById("lc3").innerHTML = value[2];
-                        }
                         if(batVolt_visible == true){
-                            drawBattery(value[3]);
+                            drawBattery(value[0]);
                         }           
                     }
                 }
             }
-            request.open("GET", "getRawValue", true);
+            request.open("GET", "getValue", true);
             request.send();
-            setTimeout('getRawValue()', 1500);
+            setTimeout('getValue()', 1500);
         }
         
         function getWiFiNetworks(){
@@ -841,7 +836,7 @@
         setTranslation("en");
         getHead();
         getWiFiNetworks();
-//        getRawValue();
+        getValue();
     </script>
 </body>
 </html>

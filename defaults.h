@@ -34,7 +34,8 @@ enum {
 enum {
  AUTO,
  MANUAL,
- PARAMETER 
+ PARAMETER ,
+ NOTHING
 };
 
 enum {

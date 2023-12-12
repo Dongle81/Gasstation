@@ -102,19 +102,21 @@ char password_AP[MAX_SSID_PW_LENGHT + 1] = PASSWORD_AP;
 //bool enableUpdate = ENABLE_UPDATE;
 bool enableOTA = ENABLE_OTA;
 bool enableUpdate = false;
-
+int16_t ClientPWM = 0;
 
 int16_t wait = 0;
 int16_t last_enc, value, rawvalue, rawpara, lastpara, percent, fading_step, fading_value;
-uint8_t modecnt, parametercnt;
+uint8_t modecnt;
 bool ev_buttonclicked, ev_modechanged, ev_buttonheld;
 bool clientconnected = false;
 bool clientconnected_old = false;
+bool ev_clientClicked = 0;
+
 
 
 // declare variables
 uint8_t state;
-uint8_t mode, old_mode;
+uint8_t mode, clientMode;
 
 float batVolt = 0;
 unsigned long lastTimeMenu = 0;
@@ -295,8 +297,6 @@ void printPWMOLED() {
         oledDisplay.print(F("%"));
       }
     }
-
-
     oledDisplay.setFont(oledFontNormal);
     oledDisplay.setFontPosTop();
     oledDisplay.drawStr(LEFTBORDER, ROW1, OLEDbuffer1);
@@ -322,6 +322,19 @@ void automatic_sequence(void) {
     }
     ev_buttonclicked = false;
   }
+
+   if (ev_clientClicked) {
+    if (state == FADING_PUMP || state == FADING_PUMP || state == PUMP ) {
+      state = PRE_STOP;
+    }
+    else if (state == DRAIN) {
+      state = STOP;
+    }
+    else {
+      state = FADING_PUMP_CALC;
+    }
+    ev_clientClicked = false;
+  } 
 
   switch (state) {
     case PRE_STOP:
@@ -360,7 +373,9 @@ void automatic_sequence(void) {
       printConsole(T_RUN, "Automatic FADING_PUMP_CALC");
       fading_step = param.softstart_time / value;
       state = FADING_PUMP;
-      sprintf(OLEDbuffer1, "Pump active");
+      if (clientconnected == 0){
+        sprintf(OLEDbuffer1, "Pump active");
+      }
       break;
 
     case FADING_PUMP:
@@ -380,7 +395,10 @@ void automatic_sequence(void) {
       break;
 
     case WAIT:
-      sprintf(OLEDbuffer1, "Automatic Mode");
+      if (clientconnected == 0){
+        sprintf(OLEDbuffer1, "Automatic Mode");
+      }
+      clientMode=NOTHING;
       break;
 
     default:
@@ -399,6 +417,16 @@ void manual_sequence(void) {
     ev_buttonclicked = false;
   }
 
+  if (ev_clientClicked) {
+    if (state == PUMP) {
+      state = STOP;
+    }
+    else {
+      state = PUMP;
+    }
+    ev_clientClicked = false;
+  }  
+
   switch (state) {
     case STOP:
       pump.coast();
@@ -408,12 +436,17 @@ void manual_sequence(void) {
 
     case PUMP:
       pump.run(value);
+      if (clientconnected == 0){
       sprintf(OLEDbuffer1, "Pump active");
+      }
       break;
 
     case WAIT:
       // nothing to do here
+      if (clientconnected == 0){
       sprintf(OLEDbuffer1, "Manual Mode");
+      }
+      clientMode=NOTHING;
       break;
 
     default:
@@ -424,6 +457,7 @@ void manual_sequence(void) {
 
 void process_encoder_button(void) {
   // encoder
+  if (clientconnected == 0){
   if (mode != PARAMETER && state != FADING_PUMP) {
     rawvalue += encoder.getValue();
     if (rawvalue != last_enc) {
@@ -436,7 +470,11 @@ void process_encoder_button(void) {
     dtostrf(percent, 4, 0, VarBuf);
     sprintf(OLEDbuffer2, "PWM %s %%", VarBuf);
   }
-
+  }else{
+    if (state != FADING_PUMP) {
+      value = map(ClientPWM, -100, 100, MINPWM, MAXPWM);
+    }
+  }
   // button
   if (clientconnected == 0){
   ClickEncoder::Button b = encoder.getButton();
@@ -498,45 +536,32 @@ void getHead() {
 }
 
 
+// get values from client
+void setPWM() {
+  if (server.hasArg("pwm")) ClientPWM = server.arg("pwm").toInt();
+
+  server.send(200, "text/plain", "saved");
+  printConsole(T_RUN, "PWM set via Client");
+}
+
+void manualFill() {
+  printConsole(T_RUN, "manualFill");
+  server.send(200, "text/html", "saved");
+  clientMode=MANUAL;
+  ev_clientClicked = true;
+}
+
+void autoFill() {
+  printConsole(T_RUN, "autoFill");
+  server.send(200, "text/html", "saved");
+  clientMode=AUTO;
+  ev_clientClicked = true;
+}
+
 // send values to client
 void getValue() {
   char buff[8];
   String response = "";
-  //  dtostrf(weightTotal, 5, 1, buff);
-  //  response += buff;
-  //  response += "g&";
-  //  dtostrf(CG_length, 5, 1, buff);
-  //  response += buff;
-  //  response += "mm&";
-  //  dtostrf(CG_trans, 5, 1, buff);
-  //  response += buff;
-  //  response += "mm&";
-  if (batType == B_VOLT) {
-    dtostrf(batVolt, 5, 2, buff);
-    response += buff;
-    response += "V";
-  } else {
-    dtostrf(batVolt, 5, 0, buff);
-    response += buff;
-    response += "%";
-  }
-  server.send(200, "text/html", response);
-}
-
-
-// send raw values to client
-void getRawValue() {
-  char buff[8];
-  String response = "";
-  //  dtostrf(weightLoadCell[LC1], 5, 1, buff);
-  //  response += buff;
-  //  response += "g&";
-  //  dtostrf(weightLoadCell[LC2], 5, 1, buff);
-  //  response += buff;
-  //  response += "g&";
-  //  dtostrf(weightLoadCell[LC3], 5, 1, buff);
-  //  response += buff;
-  //  response += "g&";
   if (batType == B_VOLT) {
     dtostrf(batVolt, 5, 2, buff);
     response += buff;
@@ -816,6 +841,7 @@ void checkClientConnected() {
     clientconnected = true;
   } else {
     clientconnected = false;
+    clientMode=NOTHING;
   }
   if (clientconnected) {
     if (clientconnected != clientconnected_old) {
@@ -837,6 +863,8 @@ void setup() {
   state = STOP;
   ev_buttonclicked = false;
   ev_modechanged = false;
+  ev_clientClicked = false;
+  clientMode = NOTHING;
 
   // init serial
   Serial.begin(115200);
@@ -922,7 +950,6 @@ void setup() {
 
   encoder.setButtonHeldEnabled(true);
   encoder.setDoubleClickEnabled(true);
-  //encoder.setButtonOnPinZeroEnabled(true);
   printConsole(T_BOOT, "encoder configured");
 
   // Start by connecting to a WiFi network
@@ -977,12 +1004,14 @@ void setup() {
   // When the client requests data
   server.on("/getHead", getHead);
   server.on("/getValue", getValue);
-  server.on("/getRawValue", getRawValue);
   server.on("/getParameter", getParameter);
   server.on("/getWiFiNetworks", getWiFiNetworks);
   server.on("/saveParameter", saveParameter);
+  server.on("/setPWM", setPWM);
+  server.on("/manualFill", manualFill);
+  server.on("/autoFill", autoFill);
 
-  // When the client upload file
+  // When the client  file
   server.on("/settings.html", HTTP_POST, []() {
     server.send(200, "text/plain", "");
   }, handleFileUpload);
@@ -1079,10 +1108,21 @@ void loop() {
       automatic_sequence();
       break;
     case PARAMETER:
-      //parameter();
+      switch (clientMode){
+        case AUTO:
+          automatic_sequence();
+        break;
+        case MANUAL:
+          manual_sequence();
+        break;
+        default:
+        // do nothing
+        break;
+      }
       break;
     default:
       manual_sequence();
+      break;
   }
 
   // update display
